@@ -1,10 +1,17 @@
+import { UsbTransport } from "./flasher/transport";
 let connection = false;
+const filters = [
+  { vendorId: 0x4348, productId: 0x55e0 },
+  { vendorId: 0x1a86, productId: 0x55e0 },
+];
 export function connect(element: HTMLButtonElement) {
   element.addEventListener("click", () => {
     navigator.usb
-      .requestDevice({ filters: [{ vendorId: 0x1a86 }] })
-      .then((device) => {
-        console.log(device);
+      .requestDevice({ filters: filters })
+      .then(async (device) => {
+        const transport = new UsbTransport(device, 0);
+        UsbTransport.openNth(0);
+        // console.log();
         connection = !connection;
         element.innerHTML = `Disconnect`;
       })
@@ -14,6 +21,10 @@ export function connect(element: HTMLButtonElement) {
       });
   });
 }
+export function scan(element: HTMLButtonElement) {
+  element.addEventListener("click", () => {});
+}
+
 export function erase(element: HTMLButtonElement) {
   element.addEventListener("click", () => {
     if (!connection) {
