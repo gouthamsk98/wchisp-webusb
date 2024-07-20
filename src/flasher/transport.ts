@@ -1,8 +1,12 @@
-const ENDPOINT_OUT = 0x02;
-const ENDPOINT_IN = 0x82;
-const USB_TIMEOUT_MS = 5000;
-
 export class UsbTransport {
+  //! Constants about protocol and devices.
+  static ENDPOINT_OUT = 0x02;
+  static ENDPOINT_IN = 0x02; //0x82;
+  static USB_TIMEOUT_MS = 5000;
+  static MAX_PACKET_SIZE = 64;
+  static SECTOR_SIZE = 1024;
+  static DEFAULT_TRANSPORT_TIMEOUT_MS = 1000;
+
   private device: USBDevice;
   private interfaceNumber: number;
 
@@ -11,7 +15,7 @@ export class UsbTransport {
     this.interfaceNumber = interfaceNumber;
   }
 
-  public async scanDevices(): Promise<number> {
+  static async scanDevices(): Promise<number> {
     const filters = [
       { vendorId: 0x4348, productId: 0x55e0 },
       { vendorId: 0x1a86, productId: 0x55e0 },
@@ -62,10 +66,10 @@ export class UsbTransport {
       for (const intf of config.interfaces) {
         console.log(intf);
         for (const endpoint of intf.alternate.endpoints) {
-          if (endpoint.endpointNumber === ENDPOINT_OUT) {
+          if (endpoint.endpointNumber === this.ENDPOINT_OUT) {
             endpointOutFound = true;
           }
-          if (endpoint.endpointNumber === ENDPOINT_IN) {
+          if (endpoint.endpointNumber === this.ENDPOINT_IN) {
             endpointInFound = true;
           }
         }
@@ -85,30 +89,14 @@ export class UsbTransport {
   }
 
   async sendRaw(raw: Uint8Array): Promise<void> {
-    await this.device.transferOut(ENDPOINT_OUT, raw);
+    await this.device.transferOut(UsbTransport.ENDPOINT_OUT, raw);
   }
 
   async recvRaw(timeout: number): Promise<Uint8Array> {
-    const result = await this.device.transferIn(ENDPOINT_IN, 64);
+    const result = await this.device.transferIn(UsbTransport.ENDPOINT_IN, 64);
     if (result.data) {
       return new Uint8Array(result.data.buffer);
     }
     throw new Error("Failed to receive data");
   }
 }
-
-// // Example usage
-// (async () => {
-//   try {
-//     const numDevices = await UsbTransport.scanDevices();
-//     console.log(`Number of devices found: ${numDevices}`);
-
-//     if (numDevices > 0) {
-//       const transport = await UsbTransport.openAny();
-//       console.log("Device opened successfully");
-//       // Use transport.sendRaw(...) and transport.recvRaw(...) as needed
-//     }
-//   } catch (error) {
-//     console.error("Error:", error);
-//   }
-// })();
