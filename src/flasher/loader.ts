@@ -1,4 +1,8 @@
 import { UsbTransport } from "./transport";
+import { Protocol } from "./protocol_handler";
+import { Command } from "./types";
+import { Response } from "./types";
+import { ResponseHandler } from "./response_handler";
 export class CH_loader extends UsbTransport {
   /// All readable and writable registers.
   /// - `RDPR`: Read Protection
@@ -15,10 +19,25 @@ export class CH_loader extends UsbTransport {
   static CFG_MASK_UID = 0x10;
   static CFG_MASK_CODE_FLASH_PROTECT = 0x20;
   static CFG_MASK_ALL = 0x1f;
+  protocol = new Protocol();
   constructor(device: USBDevice, interfaceNumber: number) {
     super(device, interfaceNumber);
   }
-  async newFromUsbTransport() {}
+  async findDevice() {
+    const command1: Command = { type: "Identify", deviceId: 0, deviceType: 0 };
+    const sendData1 = await this.protocol.ntoRaw(command1);
+    this.sendRaw(sendData1);
+    const res = await this.recv();
+    if (res.type == "Err") throw new Error("Error in finding device");
+    const command2: Command = {
+      type: "ReadConfig",
+      bitMask: CH_loader.CFG_MASK_ALL,
+    };
+    const sendData2 = await this.protocol.ntoRaw(command2);
+    this.sendRaw(sendData2);
+    const res2 = await this.recv();
+    console.log(res2);
+  }
   //   async dumpInfo(): Promise<void> {
   //     if (this.chip.eepromSize > 0) {
   //       if (this.chip.eepromSize % 1024 !== 0) {
