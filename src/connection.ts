@@ -1,4 +1,4 @@
-import { CH_loader } from "./flasher/loader";
+import { CH_loader } from "./flasher/ch_loader";
 let connection = false;
 let loader: CH_loader;
 const filters = [
@@ -25,7 +25,7 @@ export function connect(element: HTMLButtonElement) {
       .then(async (device) => {
         loader = new CH_loader(device, 0);
         CH_loader.openNth(0);
-        // console.log();
+        CH_loader.debugLog("Connected");
         connection = !connection;
         element.innerHTML = `Disconnect`;
       })
@@ -38,11 +38,11 @@ export function connect(element: HTMLButtonElement) {
 export function getInfo(element: HTMLButtonElement) {
   element.addEventListener("click", async () => {
     if (!connection) {
-      alert("Please Connect First");
+      CH_loader.debugLog("Please Connect First");
       return;
     }
     if (!loader) {
-      alert("Something went wrong");
+      CH_loader.debugLog("Something went wrong");
       return;
     }
     await loader.findDevice();
@@ -52,7 +52,7 @@ export function getInfo(element: HTMLButtonElement) {
 export function erase(element: HTMLButtonElement) {
   element.addEventListener("click", () => {
     if (!connection) {
-      alert("Please Connect First");
+      CH_loader.debugLog("Please Connect First");
       return;
     }
     element.innerHTML = `Erasing...`;
@@ -61,7 +61,7 @@ export function erase(element: HTMLButtonElement) {
 export function flash(element: HTMLButtonElement) {
   element.addEventListener("click", () => {
     if (!connection) {
-      alert("Please Connect First");
+      CH_loader.debugLog("Please Connect First");
       return;
     }
     element.innerHTML = `Flashing...`;

@@ -16,7 +16,12 @@ export class UsbTransport {
     this.device = device;
     this.interfaceNumber = interfaceNumber;
   }
-
+  static debugLog(message: string) {
+    const consoleTextarea =
+      document.querySelector<HTMLTextAreaElement>("#console")!;
+    consoleTextarea.value += message + "\n";
+    consoleTextarea.scrollTop = consoleTextarea.scrollHeight;
+  }
   static async scanDevices(): Promise<number> {
     const filters = [
       { vendorId: 0x4348, productId: 0x55e0 },
