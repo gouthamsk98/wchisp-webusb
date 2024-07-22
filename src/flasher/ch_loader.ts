@@ -36,7 +36,15 @@ export class CH_loader extends UsbTransport {
     if (!this.device_type) return false;
     return [0x14, 0x15, 0x17, 0x18, 0x19, 0x20].includes(this.device_type);
   }
+  minEraseSectorNumber(): number {
+    if (this.device_type === 0x10) {
+      return 4;
+    } else {
+      return 8;
+    }
+  }
   async findDevice() {
+    CH_loader.clearLog();
     //Identify Device
     const command1: Command = { type: "Identify", deviceId: 0, deviceType: 0 };
     const sendData1 = await this.protocol.ntoRaw(command1);
@@ -122,5 +130,25 @@ export class CH_loader extends UsbTransport {
         });
       }
     });
+  }
+  async eraseFlash() {
+    await this.findDevice();
+    if (!this.flash_size) throw new Error("Flash size not found");
+    let sectors = this.flash_size / 1024;
+    const minSectors = this.minEraseSectorNumber();
+    if (sectors < minSectors) {
+      sectors = minSectors;
+      CH_loader.debugLog(
+        `erase_code: set min number of erased sectors to ${sectors}`
+      );
+    }
+    const command: Command = { type: "Erase", sectors: sectors };
+    const sendData = await this.protocol.ntoRaw(command);
+    this.sendRaw(sendData);
+    console.log(sendData);
+    const res = await this.recv();
+    console.log(res);
+    if (res.type == "Err") throw new Error("Error in erasing flash");
+    else CH_loader.debugLog(`Erased ${sectors} code flash sectors`);
   }
 }

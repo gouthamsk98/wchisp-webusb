@@ -54,12 +54,14 @@ export function getInfo(element: HTMLButtonElement) {
 }
 
 export function erase(element: HTMLButtonElement) {
-  element.addEventListener("click", () => {
+  element.addEventListener("click", async () => {
     if (!connection) {
       CH_loader.debugLog("Please Connect First");
       return;
     }
     element.innerHTML = `Erasing...`;
+    await loader.eraseFlash();
+    element.innerHTML = `Erase`;
   });
 }
 export function flash(element: HTMLButtonElement) {
