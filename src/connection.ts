@@ -45,7 +45,11 @@ export function getInfo(element: HTMLButtonElement) {
       CH_loader.debugLog("Something went wrong");
       return;
     }
-    await loader.findDevice();
+    try {
+      await loader.findDevice();
+    } catch (e) {
+      CH_loader.debugLog(e as string);
+    }
   });
 }
 

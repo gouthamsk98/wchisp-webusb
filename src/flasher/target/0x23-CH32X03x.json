@@ -94,27 +94,27 @@
     {
       "name": "CH32X035R8T6",
       "chip_id": 80,
-      "flash_size": "64K"
+      "flash_size": 65536
     },
     {
       "name": "CH32X035C8T6",
       "chip_id": 81,
-      "flash_size": "64K"
+      "flash_size": 65536
     },
     {
       "name": "CH32X035F8U6",
       "chip_id": 94,
-      "flash_size": "64K"
+      "flash_size": 65536
     },
     {
       "name": "CH32X035G8U6",
       "chip_id": 86,
-      "flash_size": "64K"
+      "flash_size": 65536
     },
     {
       "name": "CH32X035G8R6",
       "chip_id": 91,
-      "flash_size": "64K"
+      "flash_size": 65536
     },
     {
       "name": "CH32X035F7P6",

@@ -1,6 +1,7 @@
-import { UsbTransport } from "./transport";
+import { UsbTransport } from "./transport_handler";
 import { Protocol } from "./protocol_handler";
 import { Command } from "./types";
+import chipData from "./target/0x23-CH32X03x.json";
 import { Response } from "./types";
 import { ResponseHandler } from "./response_handler";
 export class CH_loader extends UsbTransport {
@@ -19,16 +20,44 @@ export class CH_loader extends UsbTransport {
   static CFG_MASK_UID = 0x10;
   static CFG_MASK_CODE_FLASH_PROTECT = 0x20;
   static CFG_MASK_ALL = 0x1f;
+
+  device_type: number | null = null;
+  chip_id: number | null = null;
+  chip_uid: Uint8Array = new Uint8Array(8);
+  code_flash_protected: boolean | null = null;
+  btver: Uint8Array = new Uint8Array(4);
+  flash_size: number | null = null;
+
   protocol = new Protocol();
   constructor(device: USBDevice, interfaceNumber: number) {
     super(device, interfaceNumber);
   }
+  supportCodeFlashProtect(): boolean {
+    if (!this.device_type) return false;
+    return [0x14, 0x15, 0x17, 0x18, 0x19, 0x20].includes(this.device_type);
+  }
   async findDevice() {
+    //Identify Device
     const command1: Command = { type: "Identify", deviceId: 0, deviceType: 0 };
     const sendData1 = await this.protocol.ntoRaw(command1);
     this.sendRaw(sendData1);
     const res = await this.recv();
     if (res.type == "Err") throw new Error("Error in finding device");
+    this.device_type = res.data[1];
+    this.chip_id = res.data[0];
+    //Display Device Series and Chip
+    if (chipData.device_type == "0x" + this.device_type.toString(16))
+      CH_loader.debugLog("Device Series : " + chipData.name);
+    chipData.variants.forEach((variant) => {
+      if (variant.chip_id == this.chip_id) {
+        this.flash_size = variant.flash_size;
+        CH_loader.debugLog("Chip : " + variant.name);
+        CH_loader.debugLog(
+          "Flash Size : " + variant.flash_size / 1024 + " KiB"
+        );
+      }
+    });
+    //Read Config
     const command2: Command = {
       type: "ReadConfig",
       bitMask: CH_loader.CFG_MASK_ALL,
@@ -36,48 +65,62 @@ export class CH_loader extends UsbTransport {
     const sendData2 = await this.protocol.ntoRaw(command2);
     this.sendRaw(sendData2);
     const res2 = await this.recv();
-    console.log(res2);
+    if (res2.type == "Err") throw new Error("Error in finding config");
+    //check if code flash is protected
+    this.code_flash_protected =
+      this.supportCodeFlashProtect() && res2.data[2] != 0xa5;
+    CH_loader.debugLog("Code Flash Protected : " + this.code_flash_protected);
+    //get the bootloader version
+    this.btver.set(res2.data.slice(14, 18));
+    CH_loader.debugLog(
+      "Bootloader Version (BTVER) : " +
+        this.btver[0] +
+        "" +
+        this.btver[1] +
+        "." +
+        this.btver[2] +
+        "" +
+        this.btver[3]
+    );
+    //get the chip UID
+    this.chip_uid.set(res2.data.slice(18));
+    CH_loader.debugLog(
+      "Chip UID : " +
+        Array.from(this.chip_uid)
+          .map((x) => x.toString(16).padStart(2, "0").toUpperCase())
+          .join("-")
+    );
+    //get the user config byte
+    this.dumpInfo(res2);
   }
-  //   async dumpInfo(): Promise<void> {
-  //     if (this.chip.eepromSize > 0) {
-  //       if (this.chip.eepromSize % 1024 !== 0) {
-  //         console.log(
-  //           `Chip: ${this.chip.name} (Code Flash: ${
-  //             this.chip.flashSize / 1024
-  //           }KiB, Data EEPROM: ${this.chip.eepromSize} Bytes)`
-  //         );
-  //       } else {
-  //         console.log(
-  //           `Chip: ${this.chip.name} (Code Flash: ${
-  //             this.chip.flashSize / 1024
-  //           }KiB, Data EEPROM: ${this.chip.eepromSize / 1024}KiB)`
-  //         );
-  //       }
-  //     } else {
-  //       console.log(
-  //         `Chip: ${this.chip.name} (Code Flash: ${this.chip.flashSize / 1024}KiB)`
-  //       );
-  //     }
-
-  // console.log(
-  //   `Chip UID: ${this.chipUid
-  //     .map((x) => x.toString(16).padStart(2, "0"))
-  //     .join("-")}`
-  // );
-  // console.log(
-  //   `BTVER(bootloader ver): ${this.bootloaderVersion[0].toString(
-  //     16
-  //   )}${this.bootloaderVersion[1].toString(
-  //     16
-  //   )}.${this.bootloaderVersion[2].toString(
-  //     16
-  //   )}${this.bootloaderVersion[3].toString(16)}`
-  // );
-
-  // if (this.chip.supportCodeFlashProtect()) {
-  //   console.log(`Code Flash protected: ${this.codeFlashProtected}`);
-  // }
-
-  // await this.dumpConfig();
-  //   }
+  async dumpInfo(res: Response) {
+    const raw = res.data.slice(2);
+    chipData.config_registers.forEach((config) => {
+      let n: number = new DataView(
+        raw.buffer,
+        raw.byteOffset + Number(config.offset), //reg_def.offset,
+        4
+      ).getUint32(0, true);
+      CH_loader.debugLog(config.name + " : 0x" + n.toString(16));
+      if (config.fields) {
+        config.fields.forEach((fieldDef) => {
+          let bitWidth: number =
+            fieldDef.bit_range[0] - fieldDef.bit_range[1] + 1;
+          let b: number = (n >>> fieldDef.bit_range[1]) & ((1 << bitWidth) - 1);
+          CH_loader.debugLog(
+            `[${fieldDef.bit_range[0]}, ${fieldDef.bit_range[1]}] ${
+              fieldDef.name
+            }  0x${b.toString(16)} (0b${b.toString(2)})`
+          );
+          if ("explaination" in fieldDef && fieldDef.explaination) {
+            for (const [key, value] of Object.entries(fieldDef.explaination)) {
+              if (b == Number(key)) {
+                CH_loader.debugLog(` - ${value}`);
+              }
+            }
+          }
+        });
+      }
+    });
+  }
 }
