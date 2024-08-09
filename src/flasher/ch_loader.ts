@@ -4,6 +4,7 @@ import { Command } from "./types";
 import chipData from "./target/0x23-CH32X03x.json";
 import { Response } from "./types";
 import { ResponseHandler } from "./response_handler";
+import test from "node:test";
 export class CH_loader extends UsbTransport {
   /// All readable and writable registers.
   /// - `RDPR`: Read Protection
@@ -20,6 +21,7 @@ export class CH_loader extends UsbTransport {
   static CFG_MASK_UID = 0x10;
   static CFG_MASK_CODE_FLASH_PROTECT = 0x20;
   static CFG_MASK_ALL = 0x1f;
+  SECTOR_SIZE = 1024;
 
   device_type: number | null = null;
   chip_id: number | null = null;
@@ -42,6 +44,19 @@ export class CH_loader extends UsbTransport {
     } else {
       return 8;
     }
+  }
+  xorKey(): Uint8Array {
+    if (this.chip_id == null) throw new Error("Chip ID not found");
+    // Calculate the checksum by adding up all the bytes in chipUid
+    const checksum = this.chip_uid.reduce((acc, x) => acc + x, 0) & 0xff; // Ensure it's within u8 range
+
+    // Create a key array filled with the checksum
+    const key = new Uint8Array(8).fill(checksum);
+
+    // Modify the last element of the key by adding the chipId and ensure it stays within u8 range
+    key[7] = (key[7] + this.chip_id) & 0xff;
+
+    return key;
   }
   async findDevice() {
     CH_loader.clearLog();
@@ -131,10 +146,14 @@ export class CH_loader extends UsbTransport {
       }
     });
   }
-  async eraseFlash() {
-    await this.findDevice();
-    if (!this.flash_size) throw new Error("Flash size not found");
-    let sectors = this.flash_size / 1024;
+  async eraseFlash(flash_size: number | null = this.flash_size) {
+    if (!this.flash_size) {
+      await this.findDevice();
+      flash_size = this.flash_size;
+    }
+
+    if (!flash_size) throw new Error("Flash size not found");
+    let sectors = flash_size / 1024;
     const minSectors = this.minEraseSectorNumber();
     if (sectors < minSectors) {
       sectors = minSectors;
@@ -150,5 +169,74 @@ export class CH_loader extends UsbTransport {
     console.log(res);
     if (res.type == "Err") throw new Error("Error in erasing flash");
     else CH_loader.debugLog(`Erased ${sectors} code flash sectors`);
+  }
+  async flashChunk(
+    address: number,
+    raw: Uint8Array,
+    key: Uint8Array
+  ): Promise<void> {
+    // XOR the raw data with the key
+    const xored = raw.map((value, index) => value ^ key[index % 8]);
+    const padding = Math.floor(Math.random() * 256);
+    const command: Command = {
+      type: "Program",
+      address: address,
+      padding: padding,
+      data: xored,
+    };
+    const sendData = await this.protocol.ntoRaw(command);
+    this.sendRaw(sendData);
+    const res = await this.recv();
+    if (res.type == "Err") {
+      throw new Error(
+        `Program 0x${address.toString(16).padStart(8, "0")} failed`
+      );
+    }
+    CH_loader.debugLog("Programmed 0x" + address.toString(16).padStart(8, "0"));
+  }
+  intelHexToUint8Array(hexString: string) {
+    const lines = hexString.trim().split("\n");
+    const data: Array<number> = [];
+    lines.forEach((line) => {
+      if (line.startsWith(":")) {
+        const byteCount = parseInt(line.substr(1, 2), 16);
+        const dataStartIndex = 9; // Data starts after 9 characters (: + 2-byte count + 4-byte address + 2-byte record type)
+        const dataEndIndex = dataStartIndex + byteCount * 2;
+
+        for (let i = dataStartIndex; i < dataEndIndex; i += 2) {
+          data.push(parseInt(line.substr(i, 2), 16));
+        }
+      }
+    });
+
+    return new Uint8Array(data);
+  }
+  async flashFirmware(firmware: string) {
+    const raw = this.intelHexToUint8Array(firmware);
+    const sectors = raw.length / this.SECTOR_SIZE + 1;
+    if (!this.chip_id && !this.chip_uid) await this.findDevice();
+    await this.eraseFlash(sectors);
+    const key = this.xorKey();
+    const keyChecksum = key.reduce((acc, x) => (acc + x) & 0xff, 0);
+    console.log("key ", key, keyChecksum);
+    const command1: Command = {
+      type: "IspKey",
+      key: new Uint8Array(0x1e),
+    };
+    const sendData1 = await this.protocol.ntoRaw(command1);
+    this.sendRaw(sendData1);
+    const res = await this.recv();
+    if (res.type == "Err") throw new Error("isp_key failede");
+    if (res.data[0] != keyChecksum) throw new Error("isp_key checksum failed");
+    console.log("res data", res.data);
+    const CHUNK = 56;
+    let address = 0x0;
+    for (let i = 0; i < raw.length; i += CHUNK) {
+      const chunk = raw.subarray(i, i + CHUNK);
+      await this.flashChunk(address, chunk, key);
+      address += chunk.length;
+    }
+    await this.flashChunk(address, new Uint8Array(), key);
+    CH_loader.debugLog("firmware flashed");
   }
 }

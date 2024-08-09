@@ -1,6 +1,7 @@
 import { CH_loader } from "./flasher/ch_loader";
 let connection = false;
 let loader: CH_loader;
+let fileContent: string;
 const filters = [
   { vendorId: 0x4348, productId: 0x55e0 },
   { vendorId: 0x1a86, productId: 0x55e0 },
@@ -65,17 +66,32 @@ export function erase(element: HTMLButtonElement) {
   });
 }
 export function flash(element: HTMLButtonElement) {
-  element.addEventListener("click", () => {
+  element.addEventListener("click", async () => {
     if (!connection) {
       CH_loader.debugLog("Please Connect First");
       return;
     }
     element.innerHTML = `Flashing...`;
+    await loader.flashFirmware(fileContent);
+    element.innerHTML = `Flash`;
   });
 }
-export function handleUpload(element: HTMLInputElement) {
-  element.addEventListener("change", () => {
-    const file = element.files![0];
-    console.log(file);
+function readFileAsText(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = reject;
+    reader.readAsText(file);
+  });
+}
+export function readFile(element: HTMLInputElement) {
+  element.addEventListener("change", async (event) => {
+    const file = (event.target as HTMLInputElement).files![0];
+    if (file && file.name.endsWith(".hex")) {
+      fileContent = await readFileAsText(file);
+      console.log(fileContent);
+    } else {
+      alert("Please upload a valid .hex file");
+    }
   });
 }

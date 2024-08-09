@@ -27,6 +27,7 @@ export class Protocol {
         buffer.setUint8(offset + i, value[i]);
       }
     }
+    return buffer;
   }
   async ntoRaw(command: Command): Promise<Uint8Array> {
     switch (command.type) {
@@ -65,14 +66,22 @@ export class Protocol {
       }
       case "Program": {
         const { address, padding, data } = command;
+        // CMD, SIZE, ADDR, PADDING, DATA
         const buf = new Uint8Array(1 + 2 + 4 + 1 + data.length);
-        buf[0] = this.PROGRAM;
-        this.pwriteWith(new DataView(buf.buffer), address, 3, true);
-        buf[7] = padding;
+        // Create a DataView to manipulate the buffer
+        const dataView = new DataView(buf.buffer);
+        // Set the command in the first byte
+        dataView.setUint8(0, this.PROGRAM);
+        // Write the address in little-endian format starting at index 3
+        dataView.setUint32(3, address, true);
+        // Set the padding at index 7
+        dataView.setUint8(7, padding);
+        // Copy the data array into the buffer starting at index 8
         buf.set(data, 8);
+        // Calculate the payload size and write it in little-endian format at index 1
         const payloadSize = buf.length - 3;
-        this.pwriteWith(new DataView(buf.buffer), payloadSize, 1, true);
-        return buf;
+        dataView.setUint16(1, payloadSize, true);
+        return new Uint8Array(dataView.buffer);
       }
       case "Verify": {
         const { address, padding, data } = command;
