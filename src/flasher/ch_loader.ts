@@ -3,8 +3,6 @@ import { Protocol } from "./protocol_handler";
 import { Command } from "./types";
 import chipData from "./target/0x23-CH32X03x.json";
 import { Response } from "./types";
-import { ResponseHandler } from "./response_handler";
-import test from "node:test";
 export class CH_loader extends UsbTransport {
   /// All readable and writable registers.
   /// - `RDPR`: Read Protection
@@ -31,8 +29,8 @@ export class CH_loader extends UsbTransport {
   flash_size: number | null = null;
 
   protocol = new Protocol();
-  constructor(device: USBDevice, interfaceNumber: number) {
-    super(device, interfaceNumber);
+  constructor(device: USBDevice) {
+    super(device);
   }
   supportCodeFlashProtect(): boolean {
     if (!this.device_type) return false;

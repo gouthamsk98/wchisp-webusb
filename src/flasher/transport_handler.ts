@@ -10,11 +10,9 @@ export class UsbTransport {
   static DEFAULT_TRANSPORT_TIMEOUT_MS = 1000;
 
   private device: USBDevice;
-  private interfaceNumber: number;
 
-  constructor(device: USBDevice, interfaceNumber: number) {
+  constructor(device: USBDevice) {
     this.device = device;
-    this.interfaceNumber = interfaceNumber;
   }
   static debugLog(message: string) {
     const consoleTextarea =
@@ -47,11 +45,6 @@ export class UsbTransport {
   }
 
   static async openNth(nth: number): Promise<UsbTransport> {
-    const filters = [
-      { vendorId: 0x4348, productId: 0x55e0 },
-      { vendorId: 0x1a86, productId: 0x55e0 },
-    ];
-
     const devices = await navigator.usb.getDevices();
     const device = devices[nth];
     if (!device) {
@@ -93,7 +86,7 @@ export class UsbTransport {
     }
 
     await device.claimInterface(0);
-    return new UsbTransport(device, 0);
+    return new UsbTransport(device);
   }
 
   static async openAny(): Promise<UsbTransport> {
@@ -104,18 +97,14 @@ export class UsbTransport {
     await this.device.transferOut(UsbTransport.ENDPOINT_OUT, raw);
   }
 
-  async recvRaw(
-    timeout: number = UsbTransport.DEFAULT_TRANSPORT_TIMEOUT_MS
-  ): Promise<Uint8Array> {
+  async recvRaw(): Promise<Uint8Array> {
     const result = await this.device.transferIn(UsbTransport.ENDPOINT_IN, 64);
     if (result.data) {
       return new Uint8Array(result.data.buffer);
     }
     throw new Error("Failed to receive data");
   }
-  async recv(
-    timeout: number = UsbTransport.DEFAULT_TRANSPORT_TIMEOUT_MS
-  ): Promise<Response> {
+  async recv(): Promise<Response> {
     const result = await this.device.transferIn(UsbTransport.ENDPOINT_IN, 64);
     if (result.data) {
       return ResponseHandler.fromRaw(new Uint8Array(result.data.buffer));
