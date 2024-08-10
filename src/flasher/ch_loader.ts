@@ -237,4 +237,12 @@ export class CH_loader extends UsbTransport {
     await this.flashChunk(address, new Uint8Array(), key);
     CH_loader.debugLog("firmware flashed");
   }
+  async reset() {
+    const command: Command = { type: "IspEnd", reason: 1 };
+    const sendData = await this.protocol.ntoRaw(command);
+    this.sendRaw(sendData);
+    const res = await this.recv();
+    if (res.type == "Err") throw new Error("Error in reset");
+    CH_loader.debugLog("Device Reset");
+  }
 }

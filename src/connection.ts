@@ -76,6 +76,17 @@ export function flash(element: HTMLButtonElement) {
     element.innerHTML = `Flash`;
   });
 }
+export function reset(element: HTMLButtonElement) {
+  element.addEventListener("click", async () => {
+    if (!connection) {
+      CH_loader.debugLog("Please Connect First");
+      return;
+    }
+    element.innerHTML = `Resetting...`;
+    await loader.reset();
+    element.innerHTML = `Reset`;
+  });
+}
 function readFileAsText(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
