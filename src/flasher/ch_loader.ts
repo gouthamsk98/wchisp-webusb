@@ -1,7 +1,9 @@
 import { UsbTransport } from "./transport_handler";
 import { Protocol } from "./protocol_handler";
 import { Command } from "./types";
-import chipData from "./target/0x23-CH32X03x.json";
+import chipData_0x23 from "./target/0x23-CH32X03x.json";
+import chipData_0x22 from "./target/0x22-CH59x.json";
+import { ChipData } from "./types";
 import { Response } from "./types";
 export class CH_loader extends UsbTransport {
   /// All readable and writable registers.
@@ -67,6 +69,20 @@ export class CH_loader extends UsbTransport {
     this.device_type = res.data[1];
     this.chip_id = res.data[0];
     //Display Device Series and Chip
+    /* The commented out switch statement in the `findDevice` method is attempting to determine the
+  appropriate `chipData` based on the `device_type` obtained during the device identification
+  process. */
+    let chipData: ChipData;
+    switch (this.device_type) {
+      case 0x22:
+        chipData = chipData_0x22;
+        break;
+      case 0x23:
+        chipData = chipData_0x23;
+        break;
+      default:
+        throw new Error("Device not supported");
+    }
     if (chipData.device_type == "0x" + this.device_type.toString(16))
       CH_loader.debugLog("Device Series : " + chipData.name);
     chipData.variants.forEach((variant) => {
@@ -74,7 +90,14 @@ export class CH_loader extends UsbTransport {
         this.flash_size = variant.flash_size;
         CH_loader.debugLog("Chip : " + variant.name);
         CH_loader.debugLog(
-          "Flash Size : " + variant.flash_size / 1024 + " KiB"
+          "Flash Size : " /* The `variant` in the `findDevice` method is iterating over the variants
+          of the chip data to find a match with the current chip ID. It is used to
+          retrieve specific information about the chip variant based on the chip
+          ID obtained from the device. If a matching variant is found, it sets the
+          flash size and logs information about the chip variant such as the name
+          and flash size in KiB. */ +
+            variant.flash_size / 1024 +
+            " KiB"
         );
       }
     });
@@ -112,9 +135,9 @@ export class CH_loader extends UsbTransport {
           .join("-")
     );
     //get the user config byte
-    this.dumpInfo(res2);
+    this.dumpInfo(res2, chipData);
   }
-  async dumpInfo(res: Response) {
+  async dumpInfo(res: Response, chipData: ChipData) {
     const raw = res.data.slice(2);
     chipData.config_registers.forEach((config) => {
       let n: number = new DataView(

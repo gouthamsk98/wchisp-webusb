@@ -29,3 +29,38 @@ export type Command =
 export type Response =
   | { type: "Ok"; data: Uint8Array }
   | { type: "Err"; code: number; data: Uint8Array };
+
+export interface ConfigField {
+  bit_range: number[]; // Ensure that bit_range is always a tuple of exactly two numbers
+  name: string;
+  description?: string;
+  explaination?: Object;
+}
+
+export interface ConfigRegister {
+  offset: string;
+  name: string;
+  description?: string;
+  reset: string;
+  type?: string;
+  fields?: ConfigField[];
+}
+
+export interface Variant {
+  name: string;
+  chip_id: number;
+  flash_size: number;
+  eeprom_size?: number;
+}
+
+export interface ChipData {
+  name: string;
+  mcu_type: string;
+  device_type: string;
+  support_usb: boolean;
+  support_serial: boolean;
+  support_net: boolean;
+  description: string;
+  config_registers: ConfigRegister[];
+  variants: Variant[];
+}
