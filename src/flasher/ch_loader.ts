@@ -1,8 +1,10 @@
 import { UsbTransport } from "./transport_handler";
 import { Protocol } from "./protocol_handler";
 import { Command } from "./types";
+import chipData_0x21 from "./target/0x21-CH32V00x.json";
 import chipData_0x23 from "./target/0x23-CH32X03x.json";
 import chipData_0x22 from "./target/0x22-CH59x.json";
+import chipData_0x24 from "./target/0x24-CH643.json";
 import { ChipData } from "./types";
 import { Response } from "./types";
 export class CH_loader extends UsbTransport {
@@ -74,11 +76,17 @@ export class CH_loader extends UsbTransport {
   process. */
     let chipData: ChipData;
     switch (this.device_type) {
+      case 0x21:
+        chipData = chipData_0x21;
+        break;
       case 0x22:
         chipData = chipData_0x22;
         break;
       case 0x23:
         chipData = chipData_0x23;
+        break;
+      case 0x24:
+        chipData = chipData_0x24;
         break;
       default:
         throw new Error("Device not supported");
@@ -139,6 +147,7 @@ export class CH_loader extends UsbTransport {
   }
   async dumpInfo(res: Response, chipData: ChipData) {
     const raw = res.data.slice(2);
+    if (!chipData.config_registers) return;
     chipData.config_registers.forEach((config) => {
       let n: number = new DataView(
         raw.buffer,

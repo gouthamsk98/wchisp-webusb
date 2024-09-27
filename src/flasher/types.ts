@@ -51,6 +51,7 @@ export interface Variant {
   chip_id: number;
   flash_size: number;
   eeprom_size?: number;
+  alt_chip_ids?: string[] | number[];
 }
 
 export interface ChipData {
@@ -61,6 +62,6 @@ export interface ChipData {
   support_serial: boolean;
   support_net: boolean;
   description: string;
-  config_registers: ConfigRegister[];
+  config_registers?: ConfigRegister[];
   variants: Variant[];
 }
