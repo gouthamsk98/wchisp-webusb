@@ -5,8 +5,8 @@ import chipData_0x21 from "./target/0x21-CH32V00x.json";
 import chipData_0x23 from "./target/0x23-CH32X03x.json";
 import chipData_0x22 from "./target/0x22-CH59x.json";
 import chipData_0x24 from "./target/0x24-CH643.json";
-import { ChipData } from "./types";
-import { Response } from "./types";
+import { ChipData, Response, Section, IHexRecord } from "./types";
+
 export class CH_loader extends UsbTransport {
   /// All readable and writable registers.
   /// - `RDPR`: Read Protection
@@ -176,6 +176,15 @@ export class CH_loader extends UsbTransport {
       }
     });
   }
+  async eraseCode(sectors: number) {
+    const command: Command = { type: "Erase", sectors: sectors };
+    const sendData = await this.protocol.ntoRaw(command);
+    console.log("erase send data", sendData);
+    this.sendRaw(sendData);
+    const res = await this.recv();
+    if (res.type == "Err") throw new Error("Error in erasing code");
+    else CH_loader.debugLog(`Erased ${sectors} code flash sectors`);
+  }
   async eraseFlash(flash_size: number | null = this.flash_size) {
     if (!this.flash_size) {
       await this.findDevice();
@@ -194,7 +203,7 @@ export class CH_loader extends UsbTransport {
     const command: Command = { type: "Erase", sectors: sectors };
     const sendData = await this.protocol.ntoRaw(command);
     this.sendRaw(sendData);
-    console.log(sendData);
+    console.log("erase data", sendData);
     const res = await this.recv();
     console.log(res);
     if (res.type == "Err") throw new Error("Error in erasing flash");
@@ -215,14 +224,87 @@ export class CH_loader extends UsbTransport {
       data: xored,
     };
     const sendData = await this.protocol.ntoRaw(command);
-    this.sendRaw(sendData);
+    // console.log("Programing 0x" + address.toString(16).padStart(8, "0"));
+    await this.sendRaw(sendData);
+    await this.sleep(300);
     const res = await this.recv();
     if (res.type == "Err") {
       throw new Error(
         `Program 0x${address.toString(16).padStart(8, "0")} failed`
       );
     }
-    CH_loader.debugLog("Programmed 0x" + address.toString(16).padStart(8, "0"));
+    /* The line `CH_loader.debugLog("Programmed 0x" + address.toString(16).padStart(8, "0"));` is a
+    debugging log statement in the `CH_loader` class of the TypeScript code. */
+    // CH_loader.debugLog("Programmed 0x" + address.toString(16).padStart(8, "0"));
+  }
+  extendFirmwareToSectorBoundary(buf: number[]): number[] {
+    const newArray = [...buf];
+    if (newArray.length % 1024 !== 0) {
+      const remain = 1024 - (newArray.length % 1024);
+      newArray.push(...new Array(remain).fill(0));
+    }
+    return newArray;
+  }
+  private mergeSections(sections: Section[]): Uint8Array {
+    sections.sort((a, b) => a.offset - b.offset); // order by start address
+
+    const startAddress = sections[0].offset;
+    const endAddress =
+      sections[sections.length - 1].offset +
+      sections[sections.length - 1].value.length;
+
+    const totalSize = endAddress - startAddress;
+
+    const binary = new Uint8Array(totalSize);
+    // FIXME: check section overlap?
+    for (const section of sections) {
+      const sectStart = section.offset - startAddress;
+      binary.set(section.value, sectStart);
+    }
+    return binary;
+  }
+  async readIHex(data: string): Promise<Uint8Array> {
+    console.log("read intel hex");
+
+    const records: Section[] = [];
+    let baseAddress = 0;
+
+    const lines = data.split("\n");
+    for (const line of lines) {
+      if (line.startsWith(":")) {
+        const record = this.parseIHexRecord(line);
+        switch (record.type) {
+          case "00": // Data
+            const offset = baseAddress + record.offset;
+            records.push({ offset, value: record.data });
+            break;
+          case "01": // End Of File
+            break;
+          case "02": // Extended Segment Address
+            baseAddress = record.address * 16;
+            break;
+          case "03": // Start Segment Address
+            break;
+          case "04": // Extended Linear Address
+            baseAddress = record.address << 16;
+            break;
+          case "05": // Start Linear Address
+            break;
+        }
+      }
+    }
+    return this.mergeSections(records);
+  }
+  parseIHexRecord(line: string): IHexRecord {
+    const length = parseInt(line.substr(1, 2), 16);
+    const offset = parseInt(line.substr(3, 4), 16);
+    const type = line.substr(7, 2);
+    const data = new Uint8Array(length);
+    for (let i = 0; i < length; i++) {
+      data[i] = parseInt(line.substr(9 + i * 2, 2), 16);
+    }
+    const address = parseInt(line.substr(9, 4), 16);
+    return { type, offset, data, address };
   }
   intelHexToUint8Array(hexString: string) {
     const lines = hexString.trim().split("\n");
@@ -242,13 +324,13 @@ export class CH_loader extends UsbTransport {
     return new Uint8Array(data);
   }
   async flashFirmware(firmware: string) {
-    const raw = this.intelHexToUint8Array(firmware);
+    const raw = await this.readIHex(firmware);
     const sectors = raw.length / this.SECTOR_SIZE + 1;
-    if (!this.chip_id && !this.chip_uid) await this.findDevice();
-    await this.eraseFlash(sectors);
+    if (!this.flash_size) await this.findDevice();
+    await this.eraseCode(sectors);
+    CH_loader.debugLog("flashing firmware ...");
     const key = this.xorKey();
     const keyChecksum = key.reduce((acc, x) => (acc + x) & 0xff, 0);
-    console.log("key ", key, keyChecksum);
     const command1: Command = {
       type: "IspKey",
       key: new Uint8Array(0x1e),
