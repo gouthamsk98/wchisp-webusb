@@ -8,8 +8,9 @@ export class UsbTransport {
   static MAX_PACKET_SIZE = 64;
   static SECTOR_SIZE = 1024;
   static DEFAULT_TRANSPORT_TIMEOUT_MS = 1000;
-
+  static consoleTextarea = "";
   private device: USBDevice;
+  static enable_DOM_Log = true;
 
   constructor(device: USBDevice) {
     this.device = device;
@@ -18,10 +19,13 @@ export class UsbTransport {
     return new Promise((resolve) => setTimeout(resolve, microseconds / 1000));
   }
   static debugLog(message: string) {
-    const consoleTextarea =
-      document.querySelector<HTMLTextAreaElement>("#console")!;
-    consoleTextarea.value += message + "\n";
-    consoleTextarea.scrollTop = consoleTextarea.scrollHeight;
+    UsbTransport.consoleTextarea += message + "\n";
+    if (UsbTransport.enable_DOM_Log) {
+      const consoleTextarea =
+        document.querySelector<HTMLTextAreaElement>("#console")!;
+      consoleTextarea.value += message + "\n";
+      consoleTextarea.scrollTop = consoleTextarea.scrollHeight;
+    }
   }
   static clearLog() {
     const consoleTextarea =
