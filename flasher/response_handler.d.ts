@@ -1,4 +1,4 @@
-import { Response } from "./types.ts";
+import { Response } from "./types";
 export declare class ResponseHandler {
     static responseToString(response: Response): string;
     static isOk(response: Response): boolean;

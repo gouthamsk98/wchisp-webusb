@@ -4,7 +4,8 @@
 
     "declaration": true,
     "outDir": "./flasher",
-    "strict": true
+    "strict": true,
+    "moduleResolution": "bundler"
   },
   "include": ["src/flasher"]
 }
