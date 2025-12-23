@@ -4,7 +4,7 @@
   "collaborators": [
     "goutham <goutham@yudurobotics.com>"
   ],
-  "version": "0.1.0",
+  "version": "0.1.1",
   "files": [
     "ch_loader.js",
     "ch_loader.d.ts",
