@@ -5,7 +5,39 @@ import chipData_0x21 from "./target/0x21-CH32V00x.json";
 import chipData_0x23 from "./target/0x23-CH32X03x.json";
 import chipData_0x22 from "./target/0x22-CH59x.json";
 import chipData_0x24 from "./target/0x24-CH643.json";
+import chipData_0x13 from "./target/0x13-CH57x.json";
 import { ChipData, Response, Section, IHexRecord } from "./types";
+
+function toNumber(value: unknown): number {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+
+  if (typeof value === "string") {
+    const s = value.trim();
+    const radix = s.startsWith("0x") || s.startsWith("0X") ? 16 : 10;
+    const n = Number.parseInt(s, radix);
+    if (Number.isFinite(n)) return n;
+  }
+
+  throw new Error(`Invalid numeric value: ${String(value)}`);
+}
+
+function normalizeChipData(raw: unknown): ChipData {
+  const data = raw as any;
+  if (!data || typeof data !== "object") {
+    throw new Error("Invalid chip data JSON: expected object");
+  }
+  if (!Array.isArray(data.variants)) {
+    throw new Error("Invalid chip data JSON: expected variants[]");
+  }
+
+  return {
+    ...data,
+    variants: data.variants.map((variant: any) => ({
+      ...variant,
+      chip_id: toNumber(variant.chip_id),
+    })),
+  } as ChipData;
+}
 
 export class CH_loader extends UsbTransport {
   /// All readable and writable registers.
@@ -74,19 +106,23 @@ export class CH_loader extends UsbTransport {
     /* The commented out switch statement in the `findDevice` method is attempting to determine the
   appropriate `chipData` based on the `device_type` obtained during the device identification
   process. */
+    console.log("res data", res.data);
     let chipData: ChipData;
     switch (this.device_type) {
       case 0x21:
-        chipData = chipData_0x21;
+        chipData = normalizeChipData(chipData_0x21);
         break;
       case 0x22:
-        chipData = chipData_0x22;
+        chipData = normalizeChipData(chipData_0x22);
         break;
       case 0x23:
-        chipData = chipData_0x23;
+        chipData = normalizeChipData(chipData_0x23);
         break;
       case 0x24:
-        chipData = chipData_0x24;
+        chipData = normalizeChipData(chipData_0x24);
+        break;
+      case 0x13:
+        chipData = normalizeChipData(chipData_0x13);
         break;
       default:
         throw new Error("Device not supported");

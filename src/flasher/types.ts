@@ -63,6 +63,8 @@ export interface Variant {
   flash_size: number;
   eeprom_size?: number;
   alt_chip_ids?: string[] | number[];
+  eeprom_start_addr?: number;
+  config_registers?: ConfigRegister[];
 }
 
 export interface ChipData {

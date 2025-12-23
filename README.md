@@ -22,6 +22,7 @@ SUBSYSTEM=="usb", ATTRS{idVendor}=="4348", ATTRS{idProduct}=="55e0", MODE="0666"
 - [x] CH32X03x
 - [x] CH59x
 - [x] CH5643
+- [x] CH572
 
 ## Tested On
 
@@ -29,6 +30,7 @@ This tool should work on most WCH MCU chips. But I haven't tested it on any othe
 
 - [x] CH32X035
 - [x] CH592F-R0-1v0
+- [x] CH572
 
 ## Author 
 
