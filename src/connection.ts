@@ -24,8 +24,12 @@ export function connect(element: HTMLButtonElement) {
     navigator.usb
       .requestDevice({ filters: filters })
       .then(async (device) => {
+        await device.open();
+        if (device.configuration === null) {
+          await device.selectConfiguration(1);
+        }
+        await device.claimInterface(0);
         loader = new CH_loader(device);
-        CH_loader.openNth(0);
         CH_loader.debugLog("Connected");
         connection = !connection;
         element.innerHTML = `Disconnect`;

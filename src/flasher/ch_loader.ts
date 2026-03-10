@@ -97,7 +97,7 @@ export class CH_loader extends UsbTransport {
     //Identify Device
     const command1: Command = { type: "Identify", deviceId: 0, deviceType: 0 };
     const sendData1 = await this.protocol.ntoRaw(command1);
-    this.sendRaw(sendData1);
+    await this.sendRaw(sendData1);
     const res = await this.recv();
     if (res.type == "Err") throw new Error("Error in finding device");
     this.device_type = res.data[1];
@@ -141,7 +141,7 @@ export class CH_loader extends UsbTransport {
           flash size and logs information about the chip variant such as the name
           and flash size in KiB. */ +
             variant.flash_size / 1024 +
-            " KiB"
+            " KiB",
         );
       }
     });
@@ -151,7 +151,7 @@ export class CH_loader extends UsbTransport {
       bitMask: CH_loader.CFG_MASK_ALL,
     };
     const sendData2 = await this.protocol.ntoRaw(command2);
-    this.sendRaw(sendData2);
+    await this.sendRaw(sendData2);
     const res2 = await this.recv();
     if (res2.type == "Err") throw new Error("Error in finding config");
     //check if code flash is protected
@@ -168,7 +168,7 @@ export class CH_loader extends UsbTransport {
         "." +
         this.btver[2] +
         "" +
-        this.btver[3]
+        this.btver[3],
     );
     //get the chip UID
     this.chip_uid.set(res2.data.slice(18));
@@ -176,7 +176,7 @@ export class CH_loader extends UsbTransport {
       "Chip UID : " +
         Array.from(this.chip_uid)
           .map((x) => x.toString(16).padStart(2, "0").toUpperCase())
-          .join("-")
+          .join("-"),
     );
     //get the user config byte
     this.dumpInfo(res2, chipData);
@@ -188,7 +188,7 @@ export class CH_loader extends UsbTransport {
       let n: number = new DataView(
         raw.buffer,
         raw.byteOffset + Number(config.offset), //reg_def.offset,
-        4
+        4,
       ).getUint32(0, true);
       CH_loader.debugLog(config.name + " : 0x" + n.toString(16));
       if (config.fields) {
@@ -199,7 +199,7 @@ export class CH_loader extends UsbTransport {
           CH_loader.debugLog(
             `[${fieldDef.bit_range[0]}, ${fieldDef.bit_range[1]}] ${
               fieldDef.name
-            }  0x${b.toString(16)} (0b${b.toString(2)})`
+            }  0x${b.toString(16)} (0b${b.toString(2)})`,
           );
           if ("explaination" in fieldDef && fieldDef.explaination) {
             for (const [key, value] of Object.entries(fieldDef.explaination)) {
@@ -213,10 +213,14 @@ export class CH_loader extends UsbTransport {
     });
   }
   async eraseCode(sectors: number) {
+    const minSectors = this.minEraseSectorNumber();
+    if (sectors < minSectors) {
+      sectors = minSectors;
+    }
     const command: Command = { type: "Erase", sectors: sectors };
     const sendData = await this.protocol.ntoRaw(command);
     console.log("erase send data", sendData);
-    this.sendRaw(sendData);
+    await this.sendRaw(sendData);
     const res = await this.recv();
     if (res.type == "Err") throw new Error("Error in erasing code");
     else CH_loader.debugLog(`Erased ${sectors} code flash sectors`);
@@ -233,12 +237,12 @@ export class CH_loader extends UsbTransport {
     if (sectors < minSectors) {
       sectors = minSectors;
       CH_loader.debugLog(
-        `erase_code: set min number of erased sectors to ${sectors}`
+        `erase_code: set min number of erased sectors to ${sectors}`,
       );
     }
     const command: Command = { type: "Erase", sectors: sectors };
     const sendData = await this.protocol.ntoRaw(command);
-    this.sendRaw(sendData);
+    await this.sendRaw(sendData);
     console.log("erase data", sendData);
     const res = await this.recv();
     console.log(res);
@@ -248,7 +252,7 @@ export class CH_loader extends UsbTransport {
   async flashChunk(
     address: number,
     raw: Uint8Array,
-    key: Uint8Array
+    key: Uint8Array,
   ): Promise<void> {
     // XOR the raw data with the key
     const xored = raw.map((value, index) => value ^ key[index % 8]);
@@ -266,12 +270,35 @@ export class CH_loader extends UsbTransport {
     const res = await this.recv();
     if (res.type == "Err") {
       throw new Error(
-        `Program 0x${address.toString(16).padStart(8, "0")} failed`
+        `Program 0x${address.toString(16).padStart(8, "0")} failed`,
       );
     }
     /* The line `CH_loader.debugLog("Programmed 0x" + address.toString(16).padStart(8, "0"));` is a
     debugging log statement in the `CH_loader` class of the TypeScript code. */
     // CH_loader.debugLog("Programmed 0x" + address.toString(16).padStart(8, "0"));
+  }
+  async verifyChunk(
+    address: number,
+    raw: Uint8Array,
+    key: Uint8Array,
+  ): Promise<void> {
+    const xored = raw.map((value, index) => value ^ key[index % 8]);
+    const padding = Math.floor(Math.random() * 256);
+    const command: Command = {
+      type: "Verify",
+      address: address,
+      padding: padding,
+      data: xored,
+    };
+    const sendData = await this.protocol.ntoRaw(command);
+    await this.sendRaw(sendData);
+    await this.sleep(300);
+    const res = await this.recv();
+    if (res.type == "Err") {
+      throw new Error(
+        `Verify 0x${address.toString(16).padStart(8, "0")} failed`,
+      );
+    }
   }
   extendFirmwareToSectorBoundary(buf: number[]): number[] {
     const newArray = [...buf];
@@ -361,8 +388,13 @@ export class CH_loader extends UsbTransport {
   }
   async flashFirmware(firmware: string) {
     const raw = await this.readIHex(firmware);
-    const sectors = raw.length / this.SECTOR_SIZE + 1;
+    const sectors = Math.ceil(raw.length / this.SECTOR_SIZE);
     if (!this.flash_size) await this.findDevice();
+    if (this.flash_size && raw.length > this.flash_size) {
+      throw new Error(
+        `Firmware size (${raw.length} bytes) exceeds flash size (${this.flash_size} bytes)`,
+      );
+    }
     await this.eraseCode(sectors);
     CH_loader.debugLog("flashing firmware ...");
     const key = this.xorKey();
@@ -372,9 +404,9 @@ export class CH_loader extends UsbTransport {
       key: new Uint8Array(0x1e),
     };
     const sendData1 = await this.protocol.ntoRaw(command1);
-    this.sendRaw(sendData1);
+    await this.sendRaw(sendData1);
     const res = await this.recv();
-    if (res.type == "Err") throw new Error("isp_key failede");
+    if (res.type == "Err") throw new Error("isp_key failed");
     if (res.data[0] != keyChecksum) throw new Error("isp_key checksum failed");
     console.log("res data", res.data);
     const CHUNK = 56;
@@ -385,12 +417,22 @@ export class CH_loader extends UsbTransport {
       address += chunk.length;
     }
     await this.flashChunk(address, new Uint8Array(), key);
-    CH_loader.debugLog("firmware flashed");
+    CH_loader.debugLog("Code flash " + raw.length + " bytes written");
+    // Verify
+    CH_loader.debugLog("Verifying firmware ...");
+    address = 0x0;
+    for (let i = 0; i < raw.length; i += CHUNK) {
+      const chunk = raw.subarray(i, i + CHUNK);
+      await this.verifyChunk(address, chunk, key);
+      address += chunk.length;
+    }
+    await this.verifyChunk(address, new Uint8Array(), key);
+    CH_loader.debugLog("Firmware verified successfully");
   }
   async reset() {
     const command: Command = { type: "IspEnd", reason: 1 };
     const sendData = await this.protocol.ntoRaw(command);
-    this.sendRaw(sendData);
+    await this.sendRaw(sendData);
     const res = await this.recv();
     if (res.type == "Err") throw new Error("Error in reset");
     CH_loader.debugLog("Device Reset");
