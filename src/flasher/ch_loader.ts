@@ -63,6 +63,8 @@ export class CH_loader extends UsbTransport {
   code_flash_protected: boolean | null = null;
   btver: Uint8Array = new Uint8Array(4);
   flash_size: number | null = null;
+  eeprom_size: number = 0;
+  chipData: ChipData | null = null;
 
   protocol = new Protocol();
   constructor(device: USBDevice) {
@@ -132,19 +134,19 @@ export class CH_loader extends UsbTransport {
     chipData.variants.forEach((variant) => {
       if (variant.chip_id == this.chip_id) {
         this.flash_size = variant.flash_size;
+        this.eeprom_size = variant.eeprom_size ?? 0;
         CH_loader.debugLog("Chip : " + variant.name);
         CH_loader.debugLog(
-          "Flash Size : " /* The `variant` in the `findDevice` method is iterating over the variants
-          of the chip data to find a match with the current chip ID. It is used to
-          retrieve specific information about the chip variant based on the chip
-          ID obtained from the device. If a matching variant is found, it sets the
-          flash size and logs information about the chip variant such as the name
-          and flash size in KiB. */ +
-            variant.flash_size / 1024 +
-            " KiB",
+          "Flash Size : " + variant.flash_size / 1024 + " KiB",
         );
+        if (this.eeprom_size > 0) {
+          CH_loader.debugLog(
+            "Data EEPROM : " + this.eeprom_size / 1024 + " KiB",
+          );
+        }
       }
     });
+    this.chipData = chipData;
     //Read Config
     const command2: Command = {
       type: "ReadConfig",
@@ -224,6 +226,68 @@ export class CH_loader extends UsbTransport {
     const res = await this.recv();
     if (res.type == "Err") throw new Error("Error in erasing code");
     else CH_loader.debugLog(`Erased ${sectors} code flash sectors`);
+  }
+  async resetConfig() {
+    if (!this.chipData)
+      throw new Error("Chip data not loaded, call findDevice first");
+    // Read current config
+    const readCmd: Command = {
+      type: "ReadConfig",
+      bitMask: CH_loader.CFG_MASK_RDPR_USER_DATA_WPR,
+    };
+    const readData = await this.protocol.ntoRaw(readCmd);
+    await this.sendRaw(readData);
+    const readRes = await this.recv();
+    if (readRes.type == "Err") throw new Error("Failed to read config");
+    // Config data is 12 bytes (3 x u32) at payload offset 2
+    const configRaw = new Uint8Array(readRes.data.slice(2, 14));
+    const configView = new DataView(configRaw.buffer);
+    CH_loader.debugLog(
+      "Current config: " +
+        Array.from(configRaw)
+          .map((x) => x.toString(16).padStart(2, "0"))
+          .join(""),
+    );
+    // Write each register's reset value
+    if (this.chipData.config_registers) {
+      for (const reg of this.chipData.config_registers) {
+        const offset = Number(reg.reset ? reg.offset : null);
+        if (reg.reset && !isNaN(offset) && offset + 4 <= configRaw.length) {
+          const resetVal = Number(reg.reset);
+          configView.setUint32(offset, resetVal, true);
+        }
+      }
+    }
+    CH_loader.debugLog(
+      "Reset config:   " +
+        Array.from(configRaw)
+          .map((x) => x.toString(16).padStart(2, "0"))
+          .join(""),
+    );
+    // Write config back
+    const writeCmd: Command = {
+      type: "WriteConfig",
+      bitMask: CH_loader.CFG_MASK_RDPR_USER_DATA_WPR,
+      data: configRaw,
+    };
+    const writeData = await this.protocol.ntoRaw(writeCmd);
+    await this.sendRaw(writeData);
+    const writeRes = await this.recv();
+    if (writeRes.type == "Err") throw new Error("Failed to write config");
+    CH_loader.debugLog("Config registers reset successfully");
+  }
+  async eraseDataFlash() {
+    if (this.eeprom_size === 0) {
+      CH_loader.debugLog("Chip does not support data EEPROM");
+      return;
+    }
+    const sectors = Math.max(Math.ceil(this.eeprom_size / 1024), 1);
+    const command: Command = { type: "DataErase", sectors: sectors };
+    const sendData = await this.protocol.ntoRaw(command);
+    await this.sendRaw(sendData);
+    const res = await this.recv();
+    if (res.type == "Err") throw new Error("Error erasing data flash");
+    CH_loader.debugLog(`Erased ${sectors} data flash sectors`);
   }
   async eraseFlash(flash_size: number | null = this.flash_size) {
     if (!this.flash_size) {
@@ -386,7 +450,10 @@ export class CH_loader extends UsbTransport {
 
     return new Uint8Array(data);
   }
-  async flashFirmware(firmware: string) {
+  async flashFirmware(
+    firmware: string,
+    options: { clearDataFlash?: boolean; clearCodeFlash?: boolean } = {},
+  ) {
     const raw = await this.readIHex(firmware);
     const sectors = Math.ceil(raw.length / this.SECTOR_SIZE);
     if (!this.flash_size) await this.findDevice();
@@ -395,7 +462,18 @@ export class CH_loader extends UsbTransport {
         `Firmware size (${raw.length} bytes) exceeds flash size (${this.flash_size} bytes)`,
       );
     }
-    await this.eraseCode(sectors);
+    // Reset config registers (clears CFG_DEBUG_EN — required for fresh chips)
+    await this.resetConfig();
+    // Erase data flash if requested
+    if (options.clearDataFlash) {
+      await this.eraseDataFlash();
+    }
+    // Erase code flash
+    if (options.clearCodeFlash) {
+      await this.eraseFlash();
+    } else {
+      await this.eraseCode(sectors);
+    }
     CH_loader.debugLog("flashing firmware ...");
     const key = this.xorKey();
     const keyChecksum = key.reduce((acc, x) => (acc + x) & 0xff, 0);
