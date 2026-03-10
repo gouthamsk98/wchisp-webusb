@@ -17,6 +17,10 @@ document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
       <button id="getInfo" type="button">Get Info</button>
       <label for="myfile">Upload a hex:</label>
       <input type="file" id="myfile" name="myfile" accept=".hex">
+      <div>
+        <label><input type="checkbox" id="clearCodeFlash" checked> Clear Code Flash</label>
+        <label><input type="checkbox" id="clearDataFlash" checked> Clear Data Flash</label>
+      </div>
       <button id="erase" type="button">Erase</button>
       <button id="flash" type="button">Flash</button>
       <button id="reset" type="button">Reset</button>

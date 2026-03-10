@@ -75,8 +75,17 @@ export function flash(element: HTMLButtonElement) {
       CH_loader.debugLog("Please Connect First");
       return;
     }
+    const clearCodeFlash =
+      document.querySelector<HTMLInputElement>("#clearCodeFlash")?.checked ??
+      false;
+    const clearDataFlash =
+      document.querySelector<HTMLInputElement>("#clearDataFlash")?.checked ??
+      false;
     element.innerHTML = `Flashing...`;
-    await loader.flashFirmware(fileContent);
+    await loader.flashFirmware(fileContent, {
+      clearCodeFlash,
+      clearDataFlash,
+    });
     element.innerHTML = `Flash`;
   });
 }
